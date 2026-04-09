@@ -1,0 +1,644 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>Water Invoice Parser</title>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --font-sans:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  --color-background-primary:#ffffff;
+  --color-background-secondary:#f8f9fa;
+  --color-text-primary:#1a1a1a;
+  --color-text-secondary:#6b7280;
+  --color-text-tertiary:#9ca3af;
+  --color-border-secondary:#e5e7eb;
+  --color-border-tertiary:#f3f4f6;
+  --border-radius-md:6px;
+  --border-radius-lg:8px;
+}
+body{font-family:var(--font-sans);background:#fff;padding:24px;max-width:1600px;margin:0 auto;}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useRef, useCallback } = React;
+
+window.storage = {
+  get: async (key) => { try { const v = localStorage.getItem(key); return v ? { key, value: v } : null; } catch { return null; } },
+  set: async (key, value) => { try { localStorage.setItem(key, value); return { key, value }; } catch { return null; } },
+  delete: async (key) => { try { localStorage.removeItem(key); return { key, deleted: true }; } catch { return null; } }
+};
+
+// ── Field schema ──────────────────────────────────────────────────────────────
+const EXTRACTED = [
+  { label: "Account Number",            key: "account_number",           type: "string" },
+  { label: "Account Name",              key: "account_name",             type: "string" },
+  { label: "Service Address",           key: "service_address",          type: "string" },
+  { label: "Units",                     key: "units",                    type: "number" },
+  { label: "Meter Read Date",           key: "meter_read_date",          type: "date"   },
+  { label: "Meter Reading",             key: "meter_reading",            type: "number" },
+  { label: "Water Consumption (gal)",   key: "water_consumption_gallons",type: "number" },
+  { label: "Days of Service",           key: "days_of_service",          type: "number" },
+  { label: "Sewerage Usage ($)",        key: "sewerage_usage",           type: "number" },
+  { label: "Sewerage Service ($)",      key: "sewerage_service",         type: "number" },
+  { label: "Water Consumption ($)",     key: "water_consumption",        type: "number" },
+  { label: "Louisiana Sales Tax ($)",   key: "louisiana_sales_tax",      type: "number" },
+  { label: "Mosquito Control ($)",      key: "mosquito_control",         type: "number" },
+  { label: "Lafreniere Park ($)",       key: "lafreniere_park",          type: "number" },
+  { label: "LADHH Safe Water Fee ($)",  key: "ladhh_safe_water_fee",     type: "number" },
+  { label: "Total Current Charges ($)", key: "total_current_charges",    type: "number" },
+  { label: "Due Date",                  key: "due_date",                 type: "date"   },
+  { label: "Amount Due ($)",            key: "amount_due",               type: "number" },
+  { label: "Pay Match",                 key: "pay_match",                type: "string" },
+];
+
+const COMPUTED = [
+  { label: "Water Total ($)",      key: "water_total",           fn: r => n(r.water_consumption) + n(r.water_service) },
+  { label: "Sewage Total ($)",     key: "sewage_total",          fn: r => n(r.sewerage_usage) + n(r.sewerage_service) },
+  { label: "Mosquito Total ($)",   key: "mosquito_total",        fn: r => n(r.mosquito_control) },
+  { label: "Lafreniere Total ($)", key: "lafreniere_total",      fn: r => n(r.lafreniere_park) },
+  { label: "Other Total ($)",      key: "other_total",           fn: r => n(r.louisiana_sales_tax) + n(r.ladhh_safe_water_fee) },
+  { label: "Grand Total ($)",      key: "grand_total",           fn: r => n(r.water_consumption)+n(r.water_service)+n(r.sewerage_usage)+n(r.sewerage_service)+n(r.mosquito_control)+n(r.lafreniere_park)+n(r.louisiana_sales_tax)+n(r.ladhh_safe_water_fee) },
+  { label: "$/Unit/Day",           key: "cost_per_unit_per_day", fn: r => { const u=n(r.units)||1,d=n(r.days_of_service)||1; return (n(r.water_consumption)+n(r.water_service)+n(r.sewerage_usage)+n(r.sewerage_service)+n(r.mosquito_control)+n(r.lafreniere_park)+n(r.louisiana_sales_tax)+n(r.ladhh_safe_water_fee))/(u*d); }},
+  { label: "Gal/Unit/Day",         key: "gal_per_unit_per_day",  fn: r => { const u=n(r.units)||1,d=n(r.days_of_service)||1; return n(r.water_consumption_gallons)/u/d; }},
+  { label: "Gal/Day",              key: "gal_per_day",           fn: r => { const d=n(r.days_of_service)||1; return n(r.water_consumption_gallons)/d; }},
+  { label: "Read Start Date",      key: "read_start_date",       valueType: "date", fn: r => {
+    if (!r.meter_read_date || !r.days_of_service) return null;
+    const p = r.meter_read_date.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+    if (!p) return null;
+    let yr = +p[3]; if (yr < 100) yr += (yr >= 50 ? 1900 : 2000);
+    const e = new Date(yr, +p[1]-1, +p[2]);
+    e.setDate(e.getDate() - n(r.days_of_service) + 1);
+    return String(e.getMonth()+1).padStart(2,"0")+"/"+String(e.getDate()).padStart(2,"0")+"/"+e.getFullYear();
+  }},
+];
+
+const STORAGE_KEY = "wip_results_v2";
+const CSV_STORAGE_KEY = "wip_csv_v1";
+
+const SYSTEM_PROMPT = `You are a utility invoice data extraction assistant. Extract structured data from utility invoices (Jefferson Parish or similar water/utility billing).
+
+Return ONLY a valid JSON object with no markdown, no explanation, and no extra text. Use null for any field not present on the invoice.
+
+Required JSON structure:
+{
+  "account_number": string or null,
+  "account_name": string or null,
+  "service_address": string or null,
+  "units": number or null,
+  "meter_read_date": "MM/DD/YYYY" or null,
+  "meter_reading": number or null,
+  "water_consumption_gallons": number or null,
+  "days_of_service": number or null,
+  "sewerage_usage": number or null,
+  "sewerage_service": number or null,
+  "water_consumption": number or null,
+  "louisiana_sales_tax": number or null,
+  "water_service": number or null,
+  "mosquito_control": number or null,
+  "lafreniere_park": number or null,
+  "ladhh_safe_water_fee": number or null,
+  "total_current_charges": number or null,
+  "due_date": "MM/DD/YYYY" or null,
+  "amount_due": number or null
+}
+
+Rules:
+- Dollar amounts as plain numbers, no $ symbol
+- Gallons as plain integers
+- Dates in MM/DD/YYYY format
+- account_number: include both number groups as shown, e.g. "151772 1517721"
+- account_name: the property name shown on the bill, e.g. "PARK OAKS"
+- service_address: the service location address
+- water_service: a separate line-item charge labeled "Water Service" (distinct from Water Consumption)
+- amount_due: the final amount due on the payment stub (may differ from total_current_charges if there is a prior balance)
+- If a charge type does not appear, return null`;
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function n(v) { const x = parseFloat(v); return isNaN(x) ? 0 : x; }
+
+// Strip extension and duplicate suffix e.g. "AS 01_025 (1).pdf" -> "AS 01_025"
+function fileNameToKey(name) {
+  return name
+    .replace(/\.[^.]+$/, "")           // remove extension
+    .replace(/\s*\(\d+\)\s*$/, "")   // remove trailing (1), (2) etc
+    .trim();
+}
+
+// Parse status CSV from DL tool
+function parseStatusCsv(txt) {
+  const lines = txt.split("\n").filter(l => l.trim());
+  if (!lines.length) return null;
+  const hdr = lines[0].split(",").map(h => h.trim().replace(/^"|"$/g, ""));
+  const fileNameIdx = hdr.indexOf("File Name");
+  const paidIdx     = hdr.indexOf("Paid");
+  const statusIdx   = hdr.indexOf("Download Status");
+  if (fileNameIdx === -1) return null; // not a DL status CSV
+  const rows = {};
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i].trim(); if (!line) continue;
+    const cols = []; let cur = "", q = false;
+    for (let c = 0; c < line.length; c++) {
+      if (line[c] === '"') { q = !q; }
+      else if (line[c] === "," && !q) { cols.push(cur.trim()); cur = ""; }
+      else cur += line[c];
+    }
+    cols.push(cur.trim());
+    const fileName = fileNameIdx >= 0 ? (cols[fileNameIdx] || "").trim() : "";
+    if (!fileName) continue;
+    const csvRow = {};
+    hdr.forEach((h, idx) => { csvRow[h] = cols[idx] || ""; });
+    rows[fileName] = csvRow; // keyed by File Name (no extension, no duplicate suffix)
+  }
+  return { rows, headers: hdr, paidIdx, statusIdx };
+}
+
+function applyComputed(row, csvRow) {
+  const out = { ...row };
+  // Apply read start date
+  COMPUTED.forEach(cf => {
+    try {
+      const val = cf.fn(out);
+      if (val === null || val === undefined) { out[cf.key] = null; }
+      else if (typeof val === "string") { out[cf.key] = val; }
+      else { out[cf.key] = (isNaN(val) || !isFinite(val)) ? null : parseFloat(val.toFixed(4)); }
+    } catch { out[cf.key] = null; }
+  });
+  // Pay match
+  const amtDue = parseFloat(out.amount_due);
+  const paid   = parseFloat(csvRow?.Paid);
+  if (!isNaN(amtDue) && !isNaN(paid)) {
+    out.pay_match = Math.abs(amtDue - paid) < 0.02 ? "MATCH" : "MISMATCH";
+  } else {
+    out.pay_match = null;
+  }
+  return out;
+}
+
+function fmtNum(v) {
+  if (v === null || v === undefined || v === "") return "";
+  const x = parseFloat(v);
+  if (isNaN(x)) return String(v);
+  return x.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+}
+
+function fmtCell(v, type, valueType) {
+  if (v === null || v === undefined || v === "") return "";
+  if (type === "computed" && valueType === "date") return String(v);
+  if (type === "number" || type === "computed") return fmtNum(v);
+  return String(v);
+}
+
+async function fileToBase64(file) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload  = () => res(r.result.split(",")[1]);
+    r.onerror = () => rej(new Error("read failed"));
+    r.readAsDataURL(file);
+  });
+}
+
+function downloadFile(name, content, type) {
+  const blob = new Blob([content], { type });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href = url; a.download = name;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// ── Styles ────────────────────────────────────────────────────────────────────
+const S = {
+  app:      { fontFamily: "var(--font-sans)", padding: "1rem 0", minHeight: 300 },
+  h1:       { fontSize: 20, fontWeight: 500, color: "var(--color-text-primary)", marginBottom: 3 },
+  sub:      { fontSize: 13, color: "var(--color-text-secondary)", marginBottom: "1rem" },
+
+  csvBar:   { display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", background: "var(--color-background-secondary)", borderRadius: "var(--border-radius-md)", marginBottom: "1rem", fontSize: 12, flexWrap: "wrap" },
+  csvLabel: { color: "var(--color-text-secondary)", flexShrink: 0 },
+  csvName:  { color: "var(--color-text-primary)", fontWeight: 500, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  csvLink:  { color: "#1F4E79", textDecoration: "underline", cursor: "pointer", flexShrink: 0, fontSize: 11 },
+
+  dz: (over, compact) => ({
+    border: `1.5px dashed ${over ? "#1F4E79" : "var(--color-border-secondary)"}`,
+    borderRadius: "var(--border-radius-lg)",
+    padding: compact ? "1rem 1.5rem" : "2.5rem 1.5rem",
+    textAlign: "center", cursor: "pointer",
+    background: over ? "var(--color-background-primary)" : "var(--color-background-secondary)",
+    transition: "all .15s", userSelect: "none",
+  }),
+  dzIcon:   { fontSize: 26, marginBottom: 8 },
+  dzTitle:  { fontSize: 14, fontWeight: 500, color: "var(--color-text-primary)" },
+  dzSub:    { fontSize: 12, color: "var(--color-text-secondary)", marginTop: 4 },
+  dzLink:   { color: "#1F4E79", textDecoration: "underline", cursor: "pointer" },
+
+  queue:    { marginTop: 10, display: "flex", flexDirection: "column", gap: 6 },
+  qi:       { display: "flex", alignItems: "center", gap: 8, background: "var(--color-background-primary)", border: "0.5px solid var(--color-border-tertiary)", borderRadius: "var(--border-radius-md)", padding: "8px 12px", fontSize: 12 },
+  fname:    { flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 500, color: "var(--color-text-primary)" },
+  badge: k => {
+    const m = { sz:{bg:"var(--color-background-secondary)",c:"var(--color-text-secondary)"}, pend:{bg:"var(--color-background-secondary)",c:"var(--color-text-secondary)"}, proc:{bg:"#E6F1FB",c:"#185FA5"}, done:{bg:"#EAF3DE",c:"#3B6D11"}, err:{bg:"#FCEBEB",c:"#A32D2D"}, nomatch:{bg:"#FFF4E5",c:"#8B4A0E"} }[k]||{};
+    return { fontSize: 10, padding: "2px 7px", borderRadius: 99, fontWeight: 500, background: m.bg, color: m.c };
+  },
+  rm:       { background: "none", border: "none", cursor: "pointer", color: "var(--color-text-tertiary)", fontSize: 14, padding: "2px 4px", lineHeight: 1, fontFamily: "var(--font-sans)" },
+
+  prog:     { height: 3, background: "var(--color-border-tertiary)", borderRadius: 2, marginTop: 10, overflow: "hidden" },
+  progFill: p => ({ height: "100%", background: "#1F4E79", borderRadius: 2, width: `${p}%`, transition: "width .3s" }),
+
+  actions:  { display: "flex", gap: 8, marginTop: "1rem", alignItems: "center", flexWrap: "wrap" },
+  btnP:     (dis) => ({ background: "#1F4E79", color: "#fff", border: "none", padding: "9px 22px", borderRadius: "var(--border-radius-md)", fontSize: 13, fontWeight: 500, cursor: dis ? "default" : "pointer", fontFamily: "var(--font-sans)", opacity: dis ? .38 : 1 }),
+  btnS:     (dis) => ({ background: "var(--color-background-primary)", color: "var(--color-text-primary)", border: "0.5px solid var(--color-border-secondary)", padding: "9px 18px", borderRadius: "var(--border-radius-md)", fontSize: 13, cursor: dis ? "default" : "pointer", fontFamily: "var(--font-sans)", opacity: dis ? .38 : 1 }),
+  btnSm:    { fontSize: 12, padding: "7px 14px" },
+  msg:      (err) => ({ fontSize: 12, color: err ? "#A32D2D" : "var(--color-text-secondary)" }),
+
+  divider:  { borderTop: "0.5px solid var(--color-border-tertiary)", margin: "1.5rem 0" },
+  resHdr:   { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap", gap: 8 },
+  resTitle: { fontSize: 15, fontWeight: 500, color: "var(--color-text-primary)" },
+
+  tWrap:    { overflowX: "auto", overflowY: "auto", maxHeight: "65vh", border: "0.5px solid var(--color-border-tertiary)", borderRadius: "var(--border-radius-lg)" },
+  tbl:      { borderCollapse: "collapse", fontSize: 11, whiteSpace: "nowrap", width: "100%" },
+  th:       (computed) => ({ padding: "8px 12px", textAlign: "left", fontWeight: 500, fontSize: 10, color: computed ? "#185FA5" : "var(--color-text-secondary)", borderBottom: "0.5px solid var(--color-border-tertiary)", background: computed ? "#EEF5FC" : "var(--color-background-secondary)", whiteSpace: "nowrap", position: "sticky", top: 0 }),
+  thSrc:    { padding: "8px 12px", textAlign: "left", fontWeight: 500, fontSize: 10, color: "var(--color-text-secondary)", borderBottom: "0.5px solid var(--color-border-tertiary)", background: "var(--color-background-secondary)", whiteSpace: "nowrap", position: "sticky", top: 0, left: 0, zIndex: 2 },
+  td:       (num, mm) => ({ padding: "7px 12px", borderBottom: "0.5px solid var(--color-border-tertiary)", color: mm ? "#A32D2D" : "var(--color-text-primary)", fontWeight: mm ? 600 : "normal", textAlign: num ? "right" : "left", fontVariantNumeric: num ? "tabular-nums" : "normal" }),
+  tdMatch:  (match) => ({ padding: "7px 12px", borderBottom: "0.5px solid var(--color-border-tertiary)", color: match === "MATCH" ? "#3B6D11" : match === "MISMATCH" ? "#A32D2D" : "var(--color-text-secondary)", fontWeight: match ? 600 : "normal", textAlign: "left" }),
+  tdComp:   { padding: "7px 12px", borderBottom: "0.5px solid var(--color-border-tertiary)", color: "#185FA5", background: "#F7FBFF", textAlign: "right", fontVariantNumeric: "tabular-nums" },
+  tdSrc:    { padding: "7px 12px", borderBottom: "0.5px solid var(--color-border-tertiary)", position: "sticky", left: 0, background: "var(--color-background-primary)", zIndex: 1 },
+  srcBadge: { fontSize: 10, background: "var(--color-background-secondary)", border: "0.5px solid var(--color-border-tertiary)", padding: "2px 8px", borderRadius: 99, color: "var(--color-text-secondary)", whiteSpace: "nowrap" },
+  tblNote:  { fontSize: 11, color: "var(--color-text-secondary)", marginTop: 8 },
+  storageBar: { display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", background: "var(--color-background-secondary)", borderRadius: "var(--border-radius-md)", marginBottom: "1rem", fontSize: 12, color: "var(--color-text-secondary)" },
+  dot: (ok) => ({ width: 7, height: 7, borderRadius: "50%", background: ok ? "#3B6D11" : "#9a9a96", flexShrink: 0 }),
+};
+
+// ── Main ──────────────────────────────────────────────────────────────────────
+function App() {
+  const [results,    setResults]   = useState([]);
+  const [files,      setFiles]     = useState([]);
+  const [progress,   setProgress]  = useState(null);
+  const [msg,        setMsg]       = useState({ text: "", err: false });
+  const [over,       setOver]      = useState(false);
+  const [overCsv,    setOverCsv]   = useState(false);
+  const [storageOk,  setStorageOk] = useState(null);
+  const [loading,    setLoading]   = useState(true);
+  const [csvData,    setCsvData]   = useState(null);   // { rows, headers } from status CSV
+  const [csvName,    setCsvName]   = useState("");
+  const fileRef    = useRef();
+  const csvRef     = useRef();
+
+  // ── Load persisted data on mount ───────────────────────────────────────────
+  useEffect(() => {
+    (async () => {
+      try {
+        const saved = await window.storage.get(STORAGE_KEY);
+        if (saved && saved.value) setResults(JSON.parse(saved.value));
+        const savedCsv = await window.storage.get(CSV_STORAGE_KEY);
+        if (savedCsv && savedCsv.value) {
+          const c = JSON.parse(savedCsv.value);
+          setCsvData(c.data);
+          setCsvName(c.name || "");
+        }
+        setStorageOk(true);
+      } catch {
+        setStorageOk(false);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  const saveResults = useCallback(async (rows) => {
+    try { await window.storage.set(STORAGE_KEY, JSON.stringify(rows)); setStorageOk(true); }
+    catch { setStorageOk(false); }
+  }, []);
+
+  const updateResults = useCallback((rows) => {
+    setResults(rows); saveResults(rows);
+  }, [saveResults]);
+
+  // ── CSV handling ───────────────────────────────────────────────────────────
+  const handleCsvFile = useCallback((file) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      const parsed = parseStatusCsv(e.target.result);
+      if (!parsed) {
+        setMsg({ text: "CSV must have a File Name column (export from the DL tool).", err: true });
+        return;
+      }
+      setCsvData(parsed);
+      setCsvName(file.name);
+      try {
+        await window.storage.set(CSV_STORAGE_KEY, JSON.stringify({ data: parsed, name: file.name }));
+      } catch {}
+      setMsg({ text: `Status CSV loaded — ${Object.keys(parsed.rows).length} rows.`, err: false });
+    };
+    reader.readAsText(file);
+  }, []);
+
+  // ── File management ────────────────────────────────────────────────────────
+  const addFiles = useCallback((list) => {
+    const existing = new Set(files.map(f => f.file.name + f.file.size));
+    const fresh = Array.from(list)
+      .filter(f => /\.(pdf|png|jpg|jpeg)$/i.test(f.name))
+      .filter(f => !existing.has(f.name + f.size))
+      .map(file => {
+        const key = fileNameToKey(file.name);
+        const csvRow = csvData?.rows[key] || null;
+        const matched = csvData ? (csvRow !== null) : null;
+        return { file, id: `${file.name}-${Date.now()}-${Math.random()}`, status: "pending", csvRow, matched };
+      });
+    setFiles(prev => [...prev, ...fresh]);
+  }, [files, csvData]);
+
+  const removeFile = id => setFiles(prev => prev.filter(f => f.id !== id));
+  const setFileStatus = (id, status) => setFiles(prev => prev.map(f => f.id === id ? { ...f, status } : f));
+
+  // ── Extraction ─────────────────────────────────────────────────────────────
+  const parseOne = async (item) => {
+    setFileStatus(item.id, "processing");
+    try {
+      const b64       = await fileToBase64(item.file);
+      const isPdf     = item.file.type === "application/pdf";
+      const mediaType = isPdf ? "application/pdf" : (item.file.type || "image/jpeg");
+
+      const resp = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 1000,
+          system: SYSTEM_PROMPT,
+          messages: [{ role: "user", content: [
+            isPdf
+              ? { type: "document", source: { type: "base64", media_type: mediaType, data: b64 } }
+              : { type: "image",    source: { type: "base64", media_type: mediaType, data: b64 } },
+            { type: "text", text: "Extract all invoice data and return the JSON object exactly as specified." }
+          ]}]
+        })
+      });
+
+      if (!resp.ok) {
+        const body = await resp.text();
+        let m = `API error ${resp.status}`;
+        try { const j = JSON.parse(body); if (j.error?.message) m = `API error ${resp.status}: ${j.error.message}`; } catch {}
+        throw new Error(m);
+      }
+
+      const data   = await resp.json();
+      const raw    = data.content.filter(b => b.type === "text").map(b => b.text).join("");
+      const parsed = JSON.parse(raw.replace(/```json|```/g, "").trim());
+
+      // Merge CSV row data and compute pay match
+      const csvRow = item.csvRow;
+      const row = applyComputed(
+        { ...parsed, _source: item.file.name, _id: `${Date.now()}-${Math.random()}`, _csvRow: csvRow },
+        csvRow
+      );
+      // Attach all original CSV columns as _csv_* fields
+      if (csvRow) {
+        Object.keys(csvRow).forEach(k => { row[`_csv_${k}`] = csvRow[k]; });
+      }
+      setFileStatus(item.id, "done");
+      return row;
+    } catch (err) {
+      console.error(err);
+      setFileStatus(item.id, "error");
+      setMsg({ text: `Failed: ${err.message}`, err: true });
+      return null;
+    }
+  };
+
+  const runExtraction = async () => {
+    const pending = files.filter(f => f.status === "pending" || f.status === "error");
+    if (!pending.length) return;
+    setProgress(0);
+    setMsg({ text: "", err: false });
+    const fresh = [];
+    for (let i = 0; i < pending.length; i++) {
+      setMsg({ text: `Processing ${i + 1} of ${pending.length}…`, err: false });
+      setProgress(Math.round((i / pending.length) * 100));
+      const r = await parseOne(pending[i]);
+      if (r) fresh.push(r);
+      setProgress(Math.round(((i + 1) / pending.length) * 100));
+    }
+    if (fresh.length) {
+      const updated = [...results, ...fresh];
+      updateResults(updated);
+      const mismatches = fresh.filter(r => r.pay_match === "MISMATCH").length;
+      setMsg({ text: `${fresh.length} invoice${fresh.length !== 1 ? "s" : ""} extracted.${mismatches ? ` ${mismatches} pay mismatch${mismatches !== 1 ? "es" : ""} flagged.` : ""}`, err: mismatches > 0 });
+    }
+    setTimeout(() => setProgress(null), 600);
+  };
+
+  // ── Export ─────────────────────────────────────────────────────────────────
+  const getCsvOrigHeaders = () => csvData?.headers || [];
+
+  const exportCsv = () => {
+    const origHdrs = getCsvOrigHeaders();
+    const headers = [
+      "source_file",
+      ...origHdrs,
+      ...EXTRACTED.map(f => f.key),
+      ...COMPUTED.map(f => f.key),
+    ];
+    const rows = results.map(r => [
+      r._source || "",
+      ...origHdrs.map(h => { const v = r[`_csv_${h}`] ?? ""; const s = String(v); return (s.includes(",") || s.includes('"')) ? `"${s.replace(/"/g,'""')}"`  : s; }),
+      ...EXTRACTED.map(f => { const v = r[f.key]; if (v == null) return ""; const s = String(v); return (s.includes(",") || s.includes('"')) ? `"${s.replace(/"/g,'""')}"`  : s; }),
+      ...COMPUTED.map(f => r[f.key] ?? ""),
+    ]);
+    downloadFile("invoices_extracted.csv", [headers.join(","), ...rows.map(r => r.join(","))].join("\n"), "text/csv");
+  };
+
+  const exportXls = () => {
+    const origHdrs = getCsvOrigHeaders();
+    const headers = ["Source File", ...origHdrs, ...EXTRACTED.map(f => f.label), ...COMPUTED.map(f => f.label)];
+    const rows = results.map(r => [
+      r._source || "",
+      ...origHdrs.map(h => r[`_csv_${h}`] ?? ""),
+      ...EXTRACTED.map(f => r[f.key] ?? ""),
+      ...COMPUTED.map(f => r[f.key] ?? ""),
+    ]);
+    downloadFile("invoices_extracted.xls", [headers, ...rows].map(r => r.join("\t")).join("\n"), "application/vnd.ms-excel");
+  };
+
+  const clearResults = () => {
+    if (!window.confirm(`Delete all ${results.length} saved invoice${results.length !== 1 ? "s" : ""}? This cannot be undone.`)) return;
+    updateResults([]);
+    setMsg({ text: "Results cleared.", err: false });
+  };
+
+  const deleteRow = (id) => updateResults(results.filter(r => r._id !== id));
+  const canExtract = files.some(f => f.status === "pending" || f.status === "error");
+
+  if (loading) {
+    return <div style={{ ...S.app, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--color-text-secondary)", fontSize: 13 }}>Loading saved data…</div>;
+  }
+
+  const statusLabel = { pending: "Pending", processing: "Processing…", done: "Done", error: "Error" };
+  const statusKey   = { pending: "pend", processing: "proc", done: "done", error: "err" };
+  const origHdrs    = getCsvOrigHeaders();
+
+  return (
+    <div style={S.app}>
+      <h1 style={S.h1}>Water Invoice Parser</h1>
+      <p style={S.sub}>Upload invoice PDFs/images. Optionally load the DL status CSV to match pay amounts and merge original columns.</p>
+
+      {/* Storage status */}
+      <div style={S.storageBar}>
+        <div style={S.dot(storageOk)} />
+        <span>
+          {storageOk === null ? "Checking storage…"
+            : storageOk ? `Persistent storage active — ${results.length} invoice${results.length !== 1 ? "s" : ""} saved`
+            : "Storage unavailable — results will not persist between sessions"}
+        </span>
+      </div>
+
+      {/* CSV upload bar */}
+      <div
+        style={{ ...S.csvBar, border: overCsv ? "1.5px dashed #1F4E79" : "1.5px dashed var(--color-border-secondary)", borderRadius: "var(--border-radius-lg)", padding: "10px 14px", cursor: "pointer" }}
+        onDragOver={e => { e.preventDefault(); setOverCsv(true); }}
+        onDragLeave={() => setOverCsv(false)}
+        onDrop={e => { e.preventDefault(); setOverCsv(false); const f = Array.from(e.dataTransfer.files).find(f => f.name.endsWith(".csv")); if (f) handleCsvFile(f); }}
+        onClick={() => csvRef.current.click()}
+      >
+        <input ref={csvRef} type="file" accept=".csv" style={{ display: "none" }} onChange={e => { handleCsvFile(e.target.files[0]); e.target.value = ""; }} />
+        <span style={{ fontSize: 16 }}>📋</span>
+        <span style={S.csvLabel}>{csvName ? "Status CSV:" : "Optional: drop DL status CSV here or click to load"}</span>
+        {csvName && <span style={S.csvName}>{csvName}</span>}
+        {csvName && <span style={S.csvLink} onClick={e => { e.stopPropagation(); setCsvData(null); setCsvName(""); window.storage.set(CSV_STORAGE_KEY, JSON.stringify({ data: null, name: "" })).catch(() => {}); }}>Remove</span>}
+      </div>
+
+      {/* Invoice drop zone */}
+      <div
+        style={S.dz(over, files.length > 0)}
+        onDragOver={e => { e.preventDefault(); setOver(true); }}
+        onDragLeave={() => setOver(false)}
+        onDrop={e => { e.preventDefault(); setOver(false); addFiles(e.dataTransfer.files); }}
+        onClick={() => fileRef.current.click()}
+      >
+        <input ref={fileRef} type="file" accept=".pdf,.png,.jpg,.jpeg" multiple style={{ display: "none" }} onChange={e => { addFiles(e.target.files); e.target.value = ""; }} />
+        {files.length === 0 ? (
+          <>
+            <div style={S.dzIcon}>📄</div>
+            <p style={S.dzTitle}>Drop invoice files here</p>
+            <p style={S.dzSub}>or <span style={S.dzLink}>browse to select</span> — PDF, PNG, JPG</p>
+          </>
+        ) : (
+          <p style={S.dzSub}>Drop more files or <span style={S.dzLink}>browse to add</span></p>
+        )}
+      </div>
+
+      {/* Queue */}
+      {files.length > 0 && (
+        <div style={S.queue}>
+          {files.map(item => (
+            <div key={item.id} style={S.qi}>
+              <span style={S.fname} title={item.file.name}>{item.file.name}</span>
+              <span style={S.badge("sz")}>{(item.file.size / 1024).toFixed(0)} KB</span>
+              {csvData && <span style={S.badge(item.matched ? "done" : "nomatch")}>{item.matched ? "CSV matched" : "No CSV match"}</span>}
+              <span style={S.badge(statusKey[item.status])}>{statusLabel[item.status]}</span>
+              <button style={S.rm} onClick={e => { e.stopPropagation(); removeFile(item.id); }}>✕</button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {progress !== null && (
+        <div style={S.prog}><div style={S.progFill(progress)} /></div>
+      )}
+
+      <div style={S.actions}>
+        <button style={S.btnP(!canExtract)} onClick={canExtract ? runExtraction : undefined}>Extract data</button>
+        {files.length > 0 && (
+          <button style={S.btnS(false)} onClick={() => { setFiles([]); setMsg({ text: "", err: false }); }}>Clear files</button>
+        )}
+        {msg.text && <span style={S.msg(msg.err)}>{msg.text}</span>}
+      </div>
+
+      {/* Results */}
+      {results.length > 0 && (
+        <>
+          <div style={S.divider} />
+          <div style={S.resHdr}>
+            <div style={S.resTitle}>{results.length} invoice{results.length !== 1 ? "s" : ""} logged</div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button style={S.btnS(false)} onClick={exportCsv}>Export CSV</button>
+              <button style={S.btnS(false)} onClick={exportXls}>Export Excel</button>
+              <button style={{ ...S.btnS(false), ...S.btnSm }} onClick={clearResults}>Clear all</button>
+            </div>
+          </div>
+
+          <div style={S.tWrap}>
+            <table style={S.tbl}>
+              <thead>
+                <tr>
+                  <th style={S.thSrc}>Source</th>
+                  {origHdrs.map(h => <th key={h} style={S.th(false)}>{h}</th>)}
+                  {EXTRACTED.map(f => <th key={f.key} style={S.th(false)}>{f.label}</th>)}
+                  {COMPUTED.map(f  => <th key={f.key} style={S.th(true)}>{f.label}</th>)}
+                  <th style={{ ...S.th(false), width: 32 }}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {results.map((row, ri) => (
+                  <tr key={row._id || ri}>
+                    <td style={S.tdSrc}><span style={S.srcBadge}>{row._source || "—"}</span></td>
+                    {origHdrs.map(h => (
+                      <td key={h} style={S.td(false)}>{row[`_csv_${h}`] ?? ""}</td>
+                    ))}
+                    {EXTRACTED.map(f => {
+                      const isMM = f.key === "amount_due" && row.pay_match === "MISMATCH";
+                      const isMatch = f.key === "pay_match";
+                      const tdStyle = isMatch ? S.tdMatch(row.pay_match) : S.td(f.type === "number", isMM);
+                      return (
+                        <td key={f.key}
+                          style={tdStyle}
+                          contentEditable={!isMatch}
+                          suppressContentEditableWarning
+                          onBlur={isMatch ? undefined : e => {
+                            const raw = e.target.textContent.replace(/,/g, "").trim();
+                            const updated = [...results];
+                            const newRow = { ...updated[ri], [f.key]: f.type === "number" && raw !== "" ? parseFloat(raw) : (raw === "" ? null : raw) };
+                            updated[ri] = applyComputed(newRow, newRow._csvRow);
+                            updateResults(updated);
+                            const tds = e.target.closest("tr").querySelectorAll("td.computed-cell");
+                            COMPUTED.forEach((cf, ci) => {
+                              if (tds[ci]) tds[ci].textContent = fmtCell(updated[ri][cf.key], "computed", cf.valueType);
+                            });
+                          }}
+                        >
+                          {fmtCell(row[f.key], f.type)}
+                        </td>
+                      );
+                    })}
+                    {COMPUTED.map(cf => (
+                      <td key={cf.key} style={S.tdComp} className="computed-cell">
+                        {fmtCell(row[cf.key], "computed", cf.valueType)}
+                      </td>
+                    ))}
+                    <td style={S.td(false)}>
+                      <button style={S.rm} onClick={() => deleteRow(row._id)}>✕</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p style={S.tblNote}>
+            White cells are editable. Blue columns recalculate automatically. Pay Match compares Amount Due vs Paid from the status CSV. Data is saved after every change.
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
