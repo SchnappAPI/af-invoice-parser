@@ -1,0 +1,617 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<title>AppFolio Invoice Attachment Processor</title>
+		<style>
+			@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap");
+			*,
+			*::before,
+			*::after {
+				box-sizing: border-box;
+				margin: 0;
+				padding: 0;
+			}
+			:root {
+				--bg: #0e1117;
+				--surface: #161b27;
+				--surface2: #1e2535;
+				--border: #2a3347;
+				--accent: #3b82f6;
+				--success: #22c55e;
+				--warning: #f59e0b;
+				--danger: #ef4444;
+				--text: #e2e8f0;
+				--dim: #64748b;
+				--mid: #94a3b8;
+				--mono: "IBM Plex Mono", monospace;
+				--sans: "IBM Plex Sans", sans-serif;
+			}
+			body {
+				background: var(--bg);
+				color: var(--text);
+				font-family: var(--sans);
+				padding: 48px 40px;
+				max-width: 780px;
+				margin: 0 auto;
+			}
+			h1 {
+				font-family: var(--mono);
+				font-size: 22px;
+				font-weight: 600;
+				margin-bottom: 6px;
+			}
+			.sub {
+				color: var(--dim);
+				font-family: var(--mono);
+				font-size: 12px;
+				margin-bottom: 32px;
+				display: block;
+			}
+			.section {
+				margin-bottom: 32px;
+			}
+			.section-title {
+				font-family: var(--mono);
+				font-size: 10px;
+				font-weight: 600;
+				letter-spacing: 0.12em;
+				text-transform: uppercase;
+				color: var(--dim);
+				margin-bottom: 14px;
+				padding-bottom: 8px;
+				border-bottom: 1px solid var(--border);
+			}
+			.card {
+				background: var(--surface);
+				border: 1px solid var(--border);
+				border-radius: 8px;
+				padding: 18px 22px;
+				margin-bottom: 10px;
+				display: flex;
+				gap: 18px;
+			}
+			.num {
+				background: var(--accent);
+				color: #fff;
+				font-family: var(--mono);
+				font-size: 11px;
+				font-weight: 600;
+				width: 26px;
+				height: 26px;
+				border-radius: 5px;
+				display: flex;
+				align-items: center;
+				justify-content: center;
+				flex-shrink: 0;
+				margin-top: 2px;
+			}
+			.card-body {
+				flex: 1;
+			}
+			.card-title {
+				font-weight: 600;
+				font-size: 15px;
+				margin-bottom: 5px;
+			}
+			.card-desc {
+				color: var(--mid);
+				font-size: 13px;
+				line-height: 1.7;
+			}
+			code {
+				background: var(--surface2);
+				padding: 1px 7px;
+				border-radius: 3px;
+				font-family: var(--mono);
+				font-size: 12px;
+				color: var(--text);
+				border: 1px solid var(--border);
+				white-space: nowrap;
+			}
+			.bm-link {
+				display: inline-block;
+				margin-top: 12px;
+				padding: 10px 22px;
+				background: var(--accent);
+				color: #fff;
+				border-radius: 6px;
+				font-family: var(--mono);
+				font-size: 13px;
+				font-weight: 600;
+				text-decoration: none;
+				cursor: grab;
+				user-select: none;
+			}
+			.bm-link:active {
+				opacity: 0.85;
+			}
+			.bm-hint {
+				display: inline-block;
+				margin-left: 12px;
+				color: var(--dim);
+				font-family: var(--mono);
+				font-size: 11px;
+				vertical-align: middle;
+			}
+			.note {
+				background: #0f1e38;
+				border: 1px solid #1e3a5f;
+				border-radius: 6px;
+				padding: 12px 14px;
+				font-size: 12px;
+				color: var(--mid);
+				font-family: var(--mono);
+				line-height: 1.6;
+				margin-top: 10px;
+			}
+			.note strong {
+				color: var(--accent);
+			}
+			.warn {
+				background: #1c1200;
+				border: 1px solid #854d0e;
+				border-radius: 6px;
+				padding: 12px 14px;
+				font-size: 12px;
+				color: var(--warning);
+				font-family: var(--mono);
+				line-height: 1.6;
+				margin-top: 10px;
+			}
+			.alert {
+				background: #200a0a;
+				border: 2px solid var(--danger);
+				border-radius: 8px;
+				padding: 16px 18px;
+				font-size: 13px;
+				color: #fca5a5;
+				font-family: var(--mono);
+				line-height: 1.7;
+				margin-bottom: 28px;
+				display: flex;
+				gap: 12px;
+				align-items: flex-start;
+			}
+			.alert-icon {
+				font-size: 16px;
+				flex-shrink: 0;
+				margin-top: 1px;
+			}
+			.alert strong {
+				color: var(--danger);
+			}
+			.req-box {
+				background: #0a1a10;
+				border: 1px solid #166534;
+				border-radius: 8px;
+				padding: 14px 18px;
+				font-size: 12px;
+				color: #86efac;
+				font-family: var(--mono);
+				line-height: 1.7;
+				margin-bottom: 28px;
+			}
+			.req-box strong {
+				color: var(--success);
+			}
+			.req-box code {
+				background: #0d2b1a;
+				color: #ffffff;
+				border: 1px solid #166534;
+			}
+			.pill {
+				display: inline-flex;
+				align-items: center;
+				padding: 3px 9px;
+				border-radius: 4px;
+				font-family: var(--mono);
+				font-size: 11px;
+				font-weight: 600;
+			}
+			.pill-ok {
+				background: #14532d;
+				color: var(--success);
+			}
+			.pill-skip {
+				background: #431407;
+				color: var(--warning);
+			}
+			.pill-err {
+				background: #450a0a;
+				color: #ef4444;
+			}
+			ul {
+				padding-left: 18px;
+				margin-top: 8px;
+			}
+			ul li {
+				color: var(--mid);
+				font-size: 13px;
+				line-height: 1.9;
+			}
+			ul li strong {
+				color: var(--text);
+			}
+			footer {
+				font-family: var(--mono);
+				font-size: 11px;
+				color: var(--dim);
+				margin-top: 48px;
+				padding-top: 20px;
+				border-top: 1px solid var(--border);
+			}
+		</style>
+	</head>
+	<body>
+		<h1>AppFolio Invoice Attachment Processor</h1>
+		<span class="sub">Bulk renames and downloads payable invoice attachments</span>
+
+		<!-- FIREFOX WARNING -->
+		<div class="alert">
+			<div class="alert-icon">&#9888;</div>
+			<div>
+				<strong>Firefox only.</strong> This tool is <strong>not</strong> configured to work in Google Chrome or any
+				other browser. Open this page and run the processor in Firefox.
+			</div>
+		</div>
+
+		<!-- CSV REQUIREMENT -->
+		<div class="req-box">
+			<strong>Required CSV columns:</strong> <code>Txn ID</code> and <code>Reference</code>. Missing either column will
+			cause an error.
+		</div>
+
+		<!-- SCOPE NOTE -->
+		<div class="note" style="margin-bottom: 28px">
+			<strong>Note:</strong> This tool is designed specifically for AppFolio
+			<code>Accounting &rarr; Payable Invoices</code>. It has not been tested against other areas of AppFolio and may
+			not work correctly outside of that context.
+		</div>
+
+		<!-- INSTALL -->
+		<div class="section">
+			<div class="section-title">Step 1 — Install</div>
+			<div class="card">
+				<div class="num">1</div>
+				<div class="card-body">
+					<div class="card-title">Drag the bookmarklet to your Firefox bookmark bar</div>
+					<div class="card-desc">
+						This is a one-time setup. Once it is saved, click it from any AppFolio page to launch the panel.
+					</div>
+					<a id="bm" class="bm-link" href="#">AF Invoice DL</a>
+					<span class="bm-hint">drag this to your bookmark bar</span>
+				</div>
+			</div>
+		</div>
+
+		<!-- HOW TO USE -->
+		<div class="section">
+			<div class="section-title">Step 2 — Run</div>
+
+			<div class="card">
+				<div class="num">1</div>
+				<div class="card-body">
+					<div class="card-title">Allow popups for AppFolio</div>
+					<div class="card-desc">
+						The first time you run, Firefox will block popups. Click the notification in the address bar and choose
+						<code>Always allow popups for firstlake.appfolio.com</code>. You only need to do this once.
+					</div>
+				</div>
+			</div>
+
+			<div class="card">
+				<div class="num">2</div>
+				<div class="card-body">
+					<div class="card-title">Export your CSV from AppFolio</div>
+					<div class="card-desc">
+						Open your bill report. Click <strong>Columns</strong> and make sure <code>Txn ID</code> and
+						<code>Reference</code> are visible. Then export using <code>Actions &rarr; Export as CSV</code>.
+					</div>
+					<div class="note">
+						<strong>Note:</strong> Txn ID is hidden by default on some reports. If it is not visible, use the Columns
+						button to add it.
+					</div>
+				</div>
+			</div>
+
+			<div class="card">
+				<div class="num">3</div>
+				<div class="card-body">
+					<div class="card-title">Launch the panel and load your CSV</div>
+					<div class="card-desc">
+						Navigate to any AppFolio page in Firefox. Click <code>AF Invoice DL</code> in your bookmark bar. In the
+						panel, click <code>Choose File</code> and select your CSV.
+					</div>
+					<div class="note">
+						<strong>Returning users:</strong> The panel restores your saved progress automatically. You do not need to
+						reload the CSV unless you are starting a new job.
+					</div>
+				</div>
+			</div>
+
+			<div class="card">
+				<div class="num">4</div>
+				<div class="card-body">
+					<div class="card-title">Set batch size and click Run Batch</div>
+					<div class="card-desc">
+						A batch size of 25 to 50 is recommended. The processor opens each invoice, renames the attachment to the
+						Reference value, downloads it, and moves on. Progress is saved after every invoice so you can stop and
+						resume at any time.
+					</div>
+					<div class="warn">Keep the AppFolio tab active and visible while the batch is running.</div>
+				</div>
+			</div>
+		</div>
+
+		<!-- LOG STATUSES -->
+		<div class="section">
+			<div class="section-title">Log Statuses</div>
+			<div class="card">
+				<div class="num">?</div>
+				<div class="card-body">
+					<div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px">
+						<span class="pill pill-ok">OK</span>
+						<span class="pill pill-skip">SKIP</span>
+						<span class="pill pill-err">ERROR</span>
+					</div>
+					<ul>
+						<li><strong>OK</strong> — attachment renamed and downloaded successfully.</li>
+						<li><strong>SKIP</strong> — invoice had no attachment. Not counted as a failure.</li>
+						<li>
+							<strong>ERROR</strong> — something failed. The log shows the reason. Use <code>Reset Progress</code> to
+							reprocess from scratch.
+						</li>
+					</ul>
+				</div>
+			</div>
+		</div>
+
+		<footer>AppFolio Invoice Attachment Processor &nbsp;|&nbsp; Updated 04/09/2026  &nbsp;|&nbsp;  Questions &rarr; A.Schnapp</footer>
+
+		<script>
+			const src = `(function(){
+if(document.getElementById('__afp')){document.getElementById('__afp').style.display='flex';return;}
+const SK='af_proc_v2',BU='https://firstlake.appfolio.com/accounting/payable_invoices/';
+const DL=2500,DR=1200,DD=800;
+let inv=[],csvHeaders=[],running=false,stop=false;
+function ls(){try{const r=localStorage.getItem(SK);return r?JSON.parse(r):null;}catch(e){return null;}}
+function ss(){localStorage.setItem(SK,JSON.stringify({inv,csvHeaders}));}
+const p=document.createElement('div');
+p.id='__afp';
+p.style.cssText='position:fixed;top:60px;right:24px;width:400px;max-height:85vh;background:#161b27;border:1px solid #2a3347;border-radius:10px;z-index:999999;display:flex;flex-direction:column;font-family:IBM Plex Mono,monospace;font-size:12px;color:#e2e8f0;box-shadow:0 8px 32px rgba(0,0,0,0.6);';
+p.innerHTML=\`<div id="__afpdrag" style="padding:12px 14px;background:#1e2535;border-bottom:1px solid #2a3347;cursor:move;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;border-radius:10px 10px 0 0;"><span style="font-weight:600;font-size:13px;">AF Invoice Downloader</span><div style="display:flex;gap:8px;align-items:center;"><span id="__afpbadge" style="padding:2px 8px;border-radius:3px;background:#1e2535;color:#64748b;font-size:10px;font-weight:600;border:1px solid #2a3347;">IDLE</span><button onclick="document.getElementById('__afp').style.display='none'" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:18px;line-height:1;padding:0;">x</button></div></div>
+<div style="padding:10px 14px;border-bottom:1px solid #2a3347;flex-shrink:0;">
+  <div style="color:#64748b;font-size:10px;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:5px;">Load CSV</div>
+  <div style="color:#94a3b8;font-size:10px;margin-bottom:5px;">Must include Txn ID and Reference columns.</div>
+  <input id="__afpfile" type="file" accept=".csv" style="width:100%;background:#1e2535;border:1px solid #2a3347;border-radius:4px;color:#e2e8f0;font-family:inherit;font-size:11px;padding:5px 8px;box-sizing:border-box;">
+  <div id="__afpcs" style="margin-top:4px;color:#64748b;font-size:10px;">No file loaded</div>
+</div>
+<div style="padding:10px 14px;border-bottom:1px solid #2a3347;display:grid;grid-template-columns:1fr 1fr;gap:6px;flex-shrink:0;">
+  <div style="background:#1e2535;border-radius:4px;padding:8px 10px;"><div style="color:#64748b;font-size:10px;">Total</div><div id="__afpst" style="color:#3b82f6;font-weight:600;font-size:15px;">--</div></div>
+  <div style="background:#1e2535;border-radius:4px;padding:8px 10px;"><div style="color:#64748b;font-size:10px;">Done</div><div id="__afpsd" style="color:#22c55e;font-weight:600;font-size:15px;">--</div></div>
+  <div style="background:#1e2535;border-radius:4px;padding:8px 10px;"><div style="color:#64748b;font-size:10px;">Remaining</div><div id="__afpsr" style="font-weight:600;font-size:15px;">--</div></div>
+  <div style="background:#1e2535;border-radius:4px;padding:8px 10px;"><div style="color:#64748b;font-size:10px;">Errors</div><div id="__afpse" style="color:#f59e0b;font-weight:600;font-size:15px;">--</div></div>
+</div>
+<div style="padding:8px 14px;border-bottom:1px solid #2a3347;display:flex;gap:8px;align-items:center;flex-shrink:0;">
+  <div style="color:#64748b;font-size:10px;white-space:nowrap;">Batch</div>
+  <input id="__afpbs" type="number" value="25" min="1" max="500" style="width:55px;background:#1e2535;border:1px solid #2a3347;border-radius:4px;color:#e2e8f0;font-family:inherit;font-size:12px;padding:4px 6px;">
+  <button id="__afpbr" onclick="__afpRun()" disabled style="flex:1;background:#3b82f6;border:none;border-radius:4px;color:#fff;font-family:inherit;font-size:11px;font-weight:600;padding:6px;cursor:pointer;">Run Batch</button>
+  <button id="__afpbs2" onclick="__afpStop()" disabled style="background:#1e2535;border:1px solid #2a3347;border-radius:4px;color:#64748b;font-family:inherit;font-size:11px;padding:6px 8px;cursor:pointer;">Stop</button>
+</div>
+<div id="__afplog" style="flex:1;overflow-y:auto;padding:8px 14px;font-size:11px;line-height:1.7;color:#94a3b8;min-height:120px;scrollbar-width:thin;scrollbar-color:#2a3347 transparent;"></div>
+<div style="padding:8px 14px;border-top:1px solid #2a3347;display:flex;justify-content:space-between;gap:6px;flex-shrink:0;">
+  <button onclick="__afpReset()" style="background:none;border:none;color:#64748b;font-family:inherit;font-size:10px;cursor:pointer;">Reset Progress</button>
+  <button onclick="document.getElementById('__afplog').innerHTML=''" style="background:none;border:none;color:#64748b;font-family:inherit;font-size:10px;cursor:pointer;">Clear Log</button>
+  <button id="__afpexport" onclick="__afpExport()" disabled style="background:#1e2535;border:1px solid #2a3347;border-radius:4px;color:#22c55e;font-family:inherit;font-size:10px;font-weight:600;padding:4px 10px;cursor:pointer;">Export Status CSV</button>
+</div>\`;
+document.body.appendChild(p);
+let dr=false,ddx=0,ddy=0;
+document.getElementById('__afpdrag').addEventListener('mousedown',function(e){dr=true;ddx=e.clientX-p.getBoundingClientRect().left;ddy=e.clientY-p.getBoundingClientRect().top;});
+document.addEventListener('mousemove',function(e){if(!dr)return;p.style.left=(e.clientX-ddx)+'px';p.style.top=(e.clientY-ddy)+'px';p.style.right='auto';});
+document.addEventListener('mouseup',function(){dr=false;});
+function log(m,c){const el=document.getElementById('__afplog');const t=new Date().toLocaleTimeString('en-US',{hour12:false,hour:'2-digit',minute:'2-digit',second:'2-digit'});const cols={ok:'#22c55e',warn:'#f59e0b',err:'#ef4444',info:'#3b82f6'};el.innerHTML+='<div><span style="color:#64748b">'+t+'</span> <span style="color:'+(cols[c]||'#94a3b8')+'">'+m+'</span></div>';el.scrollTop=el.scrollHeight;}
+function badge(txt,bg,col){const b=document.getElementById('__afpbadge');b.textContent=txt;b.style.background=bg;b.style.color=col;b.style.borderColor=col;}
+function stats(){const t=inv.length,d=inv.filter(i=>i.status==='done').length,e=inv.filter(i=>i.status==='error').length,sk=inv.filter(i=>i.status==='skipped').length,r=inv.filter(i=>i.status==='pending'||i.status==='processing').length;document.getElementById('__afpst').textContent=t||'--';document.getElementById('__afpsd').textContent=d||'--';document.getElementById('__afpsr').textContent=r||'--';document.getElementById('__afpse').textContent=(e+sk)||'--';}
+function parseCSV(txt){
+  const lines=txt.split('\n');
+  const hdr=lines[0].split(',').map(h=>h.trim().replace(/^"|"$/g,''));
+  const ti=hdr.indexOf('Txn ID'),ri=hdr.indexOf('Reference');
+  if(ti===-1||ri===-1){log('ERROR: CSV must have Txn ID and Reference columns.','err');return null;}
+  const seen=new Set(),res=[];
+  for(let i=1;i<lines.length;i++){
+    const line=lines[i].trim();if(!line)continue;
+    const cols=[];let cur='',q=false;
+    for(let c=0;c<line.length;c++){if(line[c]==='"'){q=!q;}else if(line[c]===','&&!q){cols.push(cur.trim());cur='';}else{cur+=line[c];}}
+    cols.push(cur.trim());
+    const id=cols[ti]?cols[ti].trim():'';
+    if(!id||isNaN(id)||seen.has(id))continue;
+    seen.add(id);
+    const row={txnId:id,ref:cols[ri]?cols[ri].trim():'',status:'pending',fileName:'',errorReason:''};
+    hdr.forEach((h,idx)=>{row['_csv_'+h]=cols[idx]||'';});
+    res.push(row);
+  }
+  return{rows:res,headers:hdr};
+}
+document.getElementById('__afpfile').addEventListener('change',function(e){
+  const f=e.target.files[0];if(!f)return;
+  const r=new FileReader();
+  r.onload=function(ev){
+    const parsed=parseCSV(ev.target.result);
+    if(!parsed)return;
+    const{rows,headers}=parsed;
+    const saved=ls();
+    if(saved&&saved.inv&&saved.inv.length){
+      const map={};for(const s of saved.inv)map[s.txnId]=s;
+      for(const row of rows)if(map[row.txnId]){row.status=map[row.txnId].status;row.fileName=map[row.txnId].fileName||'';row.errorReason=map[row.txnId].errorReason||'';}
+      log('Merged with saved progress. '+saved.inv.filter(s=>s.status==='done').length+' previously done.','info');
+    }
+    inv=rows;csvHeaders=headers;ss();
+    const pend=inv.filter(i=>i.status==='pending').length;
+    document.getElementById('__afpcs').textContent=inv.length+' invoices loaded ('+pend+' pending)';
+    document.getElementById('__afpbr').disabled=false;
+    log('CSV loaded: '+inv.length+' unique, '+pend+' pending.','ok');
+    stats();
+  };
+  r.readAsText(f);
+});
+function waitFor(fn,cb,tries){tries=tries||0;const el=fn();if(el){cb(el);return;}if(tries>60){cb(null);return;}setTimeout(function(){waitFor(fn,cb,tries+1);},150);}
+function processInTab(item){
+  return new Promise(function(resolve){
+    const tab=window.open(BU+item.txnId,'_blank');
+    if(!tab){resolve({ok:false,msg:'Popup blocked'});return;}
+    const newName=item.ref.replace(/\./g,'_');
+    const checkReady=setInterval(function(){
+      let doc;try{doc=tab.document;}catch(e){return;}
+      if(tab.location.href.indexOf(item.txnId)!==-1&&doc.readyState==='complete'){
+        clearInterval(checkReady);
+        setTimeout(function(){
+          runOnDoc(tab,doc,newName,function(result){
+            setTimeout(function(){try{tab.close();}catch(e){}resolve(result);},DD);
+          });
+        },DL);
+      }
+    },300);
+    setTimeout(function(){clearInterval(checkReady);try{tab.close();}catch(e){}resolve({ok:false,msg:'Page load timed out'});},25000);
+  });
+}
+function runOnDoc(tab,doc,newName,done){
+  const toggle=doc.querySelector('span.power-attachments__actions-toggle');
+  if(!toggle){done({ok:false,skip:true,msg:'No attachment on this bill'});return;}
+  toggle.click();
+  waitFor(function(){return doc.querySelector('a.js-attachment-rename-link');},function(rl){
+    if(!rl){done({ok:false,msg:'Rename link not found'});return;}
+    rl.click();
+    waitFor(function(){return doc.querySelector('#rename_form_new_name');},function(input){
+      if(!input){done({ok:false,msg:'Rename modal did not open'});return;}
+      try{
+        const ns=Object.getOwnPropertyDescriptor(tab.HTMLInputElement.prototype,'value').set;
+        ns.call(input,newName);
+        input.dispatchEvent(new tab.Event('input',{bubbles:true}));
+        input.dispatchEvent(new tab.Event('change',{bubbles:true}));
+      }catch(e){done({ok:false,msg:'Could not set input value'});return;}
+      waitFor(function(){return doc.querySelector('#rename_button');},function(btn){
+        if(!btn){done({ok:false,msg:'Rename button not found'});return;}
+        btn.click();
+        setTimeout(function(){
+          const al=Array.from(doc.querySelectorAll('a[href^="/attachments/"]'));
+          const nl=al.find(function(l){return l.textContent.trim()===newName;});
+          if(!nl){done({ok:false,msg:'Attachment not found after rename: '+newName});return;}
+          const row=nl.closest('tr,li,div[class*="attachment"]');
+          const dt=row?row.querySelector('span.power-attachments__actions-toggle'):null;
+          if(!dt){done({ok:false,msg:'Download toggle not found'});return;}
+          dt.click();
+          waitFor(function(){
+            const ls=Array.from(doc.querySelectorAll('a[href^="/attachments/"]'));
+            return ls.find(function(l){return l.textContent.trim()==='Download';})||null;
+          },function(dl){
+            if(!dl){done({ok:false,msg:'Download link not found'});return;}
+            dl.click();
+            done({ok:true,msg:'Downloaded as '+newName,fileName:newName});
+          });
+        },DR);
+      });
+    });
+  });
+}
+window.__afpRun=async function(){
+  if(running)return;
+  const bs=parseInt(document.getElementById('__afpbs').value)||25;
+  const queue=inv.filter(i=>i.status==='pending').slice(0,bs);
+  if(!queue.length){log('No pending invoices.','warn');return;}
+  running=true;stop=false;
+  document.getElementById('__afpbr').disabled=true;
+  document.getElementById('__afpbr').textContent='Running...';
+  document.getElementById('__afpbs2').disabled=false;
+  badge('RUNNING','#1d3a6b','#3b82f6');
+  log('Batch started: '+queue.length+' invoices.','info');
+  let dc=0,ec=0;
+  for(const item of queue){
+    if(stop){log('Stopped.','warn');break;}
+    item.status='processing';stats();
+    log('Processing '+item.txnId+' — '+item.ref,'');
+    ss();
+    const result=await processInTab(item);
+    if(result.ok){
+      item.status='done';item.fileName=result.fileName||item.ref.replace(/\./g,'_');item.errorReason='';
+      dc++;log('OK: '+item.ref+' → '+item.fileName,'ok');
+    }else if(result.skip){
+      item.status='skipped';item.fileName='';item.errorReason=result.msg;
+      ec++;log('SKIP: '+item.ref+' — '+result.msg,'warn');
+    }else{
+      item.status='error';item.fileName='';item.errorReason=result.msg;
+      ec++;log('ERROR: '+item.ref+' — '+result.msg,'err');
+    }
+    ss();stats();
+  }
+  running=false;stop=false;
+  document.getElementById('__afpbr').disabled=false;
+  document.getElementById('__afpbr').textContent='Run Batch';
+  document.getElementById('__afpbs2').disabled=true;
+  document.getElementById('__afpexport').disabled=false;
+  const allDone=inv.filter(i=>i.status==='pending').length===0;
+  badge(allDone?'ALL DONE':'IDLE',allDone?'#14532d':'#1e2535',allDone?'#22c55e':'#64748b');
+  log('Batch complete. '+dc+' downloaded, '+ec+' errors/skipped. Click Export Status CSV.','info');
+};
+window.__afpStop=function(){stop=true;log('Stop requested.','warn');};
+window.__afpReset=function(){
+  if(!confirm('Reset all progress?'))return;
+  for(const i of inv){i.status='pending';i.fileName='';i.errorReason='';}
+  ss();stats();
+  document.getElementById('__afpbr').disabled=inv.length===0;
+  document.getElementById('__afpexport').disabled=true;
+  log('Progress reset.','warn');
+};
+window.__afpExport=function(){
+  const extraHeaders=['Download Status','File Name','Error Reason'];
+  const allHeaders=[...csvHeaders,...extraHeaders];
+  const rows=inv.map(item=>{
+    const base=csvHeaders.map(h=>{const v=item['_csv_'+h]||'';return(v.includes(',')||v.includes('"'))?'"'+v.replace(/"/g,'""')+'"':v;});
+    const status=item.status==='done'?'OK':item.status==='skipped'?'SKIP':'ERROR';
+    const fname=item.fileName||'';
+    const err=item.errorReason||'';
+    return [...base,status,fname,(err.includes(',')||err.includes('"'))?'"'+err.replace(/"/g,'""')+'"':err];
+  });
+  const csv=[allHeaders.join(','),...rows.map(r=>r.join(','))].join('\n');
+  const blob=new Blob([csv],{type:'text/csv'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download='af_invoice_download_status.csv';
+  document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
+  log('Status CSV exported.','ok');
+};
+const saved=ls();
+if(saved&&saved.inv&&saved.inv.length){
+  inv=saved.inv;csvHeaders=saved.csvHeaders||[];
+  const pend=inv.filter(i=>i.status==='pending').length,done=inv.filter(i=>i.status==='done').length;
+  document.getElementById('__afpcs').textContent=inv.length+' restored ('+pend+' pending)';
+  document.getElementById('__afpbr').disabled=pend===0;
+  document.getElementById('__afpexport').disabled=done===0;
+  log('Restored '+inv.length+' invoices: '+done+' done, '+pend+' pending.','info');
+  stats();
+}else{
+  log('Ready. Load a CSV with Txn ID and Reference columns.','info');
+}
+})();`;
+document.body.appendChild(p);
+let dr=false,ddx=0,ddy=0;
+document.getElementById('__afpdrag').addEventListener('mousedown',function(e){dr=true;ddx=e.clientX-p.getBoundingClientRect().left;ddy=e.clientY-p.getBoundingClientRect().top;});
+document.addEventListener('mousemove',function(e){if(!dr)return;p.style.left=(e.clientX-ddx)+'px';p.style.top=(e.clientY-ddy)+'px';p.style.right='auto';});
+document.addEventListener('mouseup',function(){dr=false;});
+function log(m,c){const el=document.getElementById('__afplog');const t=new Date().toLocaleTimeString('en-US',{hour12:false,hour:'2-digit',minute:'2-digit',second:'2-digit'});const cols={ok:'#22c55e',warn:'#f59e0b',err:'#ef4444',info:'#3b82f6'};el.innerHTML+='<div><span style="color:#64748b">'+t+'</span> <span style="color:'+(cols[c]||'#94a3b8')+'">'+m+'</span></div>';el.scrollTop=el.scrollHeight;}
+function badge(txt,bg,col){const b=document.getElementById('__afpbadge');b.textContent=txt;b.style.background=bg;b.style.color=col;b.style.borderColor=col;}
+function stats(){const t=inv.length,d=inv.filter(i=>i.status==='done').length,e=inv.filter(i=>i.status==='error'||i.status==='skipped').length,r=inv.filter(i=>i.status==='pending'||i.status==='processing').length;document.getElementById('__afpst').textContent=t||'--';document.getElementById('__afpsd').textContent=d||'--';document.getElementById('__afpsr').textContent=r||'--';document.getElementById('__afpse').textContent=e||'--';}
+function parseCSV(txt){const lines=txt.split('\\n');const hdr=lines[0].split(',').map(h=>h.trim().replace(/^"|"$/g,''));const ti=hdr.indexOf('Txn ID'),ri=hdr.indexOf('Reference');if(ti===-1||ri===-1){log('ERROR: CSV must have Txn ID and Reference columns.','err');return[];}const seen=new Set(),res=[];for(let i=1;i<lines.length;i++){const line=lines[i].trim();if(!line)continue;const cols=[];let cur='',q=false;for(let c=0;c<line.length;c++){if(line[c]==='"'){q=!q;}else if(line[c]===','&&!q){cols.push(cur.trim());cur='';}else{cur+=line[c];}}cols.push(cur.trim());const id=cols[ti]?cols[ti].trim():'';if(!id||isNaN(id))continue;if(seen.has(id))continue;seen.add(id);res.push({txnId:id,ref:cols[ri]?cols[ri].trim():'',status:'pending'});}return res;}
+document.getElementById('__afpfile').addEventListener('change',function(e){const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=function(ev){const parsed=parseCSV(ev.target.result);if(!parsed.length)return;const saved=ls();if(saved&&saved.length){const map={};for(const s of saved)map[s.txnId]=s.status;for(const pp of parsed)if(map[pp.txnId])pp.status=map[pp.txnId];log('Merged with saved progress. '+saved.filter(s=>s.status==='done').length+' previously done.','info');}inv=parsed;ss();const pend=inv.filter(i=>i.status==='pending').length;document.getElementById('__afpcs').textContent=inv.length+' invoices loaded ('+pend+' pending)';document.getElementById('__afpbr').disabled=false;log('CSV loaded: '+inv.length+' unique, '+pend+' pending.','ok');stats();};r.readAsText(f);});
+function waitFor(fn,cb,tries){tries=tries||0;const el=fn();if(el){cb(el);return;}if(tries>60){cb(null);return;}setTimeout(function(){waitFor(fn,cb,tries+1);},150);}
+function processInTab(item){return new Promise(function(resolve){const tab=window.open(BU+item.txnId,'_blank');if(!tab){resolve({ok:false,msg:'Popup blocked'});return;}const newName=item.ref.replace(/\\./g,'_');const checkReady=setInterval(function(){let doc;try{doc=tab.document;}catch(e){return;}if(tab.location.href.indexOf(item.txnId)!==-1&&doc.readyState==='complete'){clearInterval(checkReady);setTimeout(function(){runOnDoc(tab,doc,newName,function(result){setTimeout(function(){try{tab.close();}catch(e){}resolve(result);},DD);});},DL);}},300);setTimeout(function(){clearInterval(checkReady);try{tab.close();}catch(e){}resolve({ok:false,msg:'Page load timed out'});},25000);});}
+function runOnDoc(tab,doc,newName,done){const toggle=doc.querySelector('span.power-attachments__actions-toggle');if(!toggle){done({ok:false,skip:true,msg:'No attachment on this bill'});return;}toggle.click();waitFor(function(){return doc.querySelector('a.js-attachment-rename-link');},function(rl){if(!rl){done({ok:false,msg:'Rename link not found'});return;}rl.click();waitFor(function(){return doc.querySelector('#rename_form_new_name');},function(input){if(!input){done({ok:false,msg:'Rename modal did not open'});return;}try{const ns=Object.getOwnPropertyDescriptor(tab.HTMLInputElement.prototype,'value').set;ns.call(input,newName);input.dispatchEvent(new tab.Event('input',{bubbles:true}));input.dispatchEvent(new tab.Event('change',{bubbles:true}));}catch(e){done({ok:false,msg:'Could not set input value'});return;}waitFor(function(){return doc.querySelector('#rename_button');},function(btn){if(!btn){done({ok:false,msg:'Rename button not found'});return;}btn.click();setTimeout(function(){const al=Array.from(doc.querySelectorAll('a[href^="/attachments/"]'));const nl=al.find(function(l){return l.textContent.trim()===newName;});if(!nl){done({ok:false,msg:'Attachment not found after rename: '+newName});return;}const row=nl.closest('tr,li,div[class*="attachment"]');const dt=row?row.querySelector('span.power-attachments__actions-toggle'):null;if(!dt){done({ok:false,msg:'Download toggle not found'});return;}dt.click();waitFor(function(){const ls=Array.from(doc.querySelectorAll('a[href^="/attachments/"]'));return ls.find(function(l){return l.textContent.trim()==='Download';})||null;},function(dl){if(!dl){done({ok:false,msg:'Download link not found'});return;}dl.click();done({ok:true,msg:'Renamed to '+newName});});},DR);});});});}
+window.__afpRun=async function(){if(running)return;const bs=parseInt(document.getElementById('__afpbs').value)||25;const queue=inv.filter(i=>i.status==='pending').slice(0,bs);if(!queue.length){log('No pending invoices.','warn');return;}running=true;stop=false;document.getElementById('__afpbr').disabled=true;document.getElementById('__afpbr').textContent='Running...';document.getElementById('__afpbs2').disabled=false;badge('RUNNING','#1d3a6b','#3b82f6');log('Batch started: '+queue.length+' invoices.','info');let dc=0,ec=0;for(const item of queue){if(stop){log('Stopped.','warn');break;}item.status='processing';stats();log('Processing '+item.txnId+' — '+item.ref,'');ss();const result=await processInTab(item);if(result.ok){item.status='done';dc++;log('OK: '+item.txnId+' — '+result.msg,'ok');}else if(result.skip){item.status='skipped';ec++;log('SKIP: '+item.txnId+' — '+result.msg,'warn');}else{item.status='error';ec++;log('ERROR: '+item.txnId+' — '+result.msg,'err');}ss();stats();}running=false;stop=false;document.getElementById('__afpbr').disabled=false;document.getElementById('__afpbr').textContent='Run Batch';document.getElementById('__afpbs2').disabled=true;const allDone=inv.filter(i=>i.status==='pending').length===0;badge(allDone?'ALL DONE':'IDLE',allDone?'#14532d':'#1e2535',allDone?'#22c55e':'#64748b');log('Batch complete. '+dc+' ok, '+ec+' errors/skipped.','info');};
+window.__afpStop=function(){stop=true;log('Stop requested.','warn');};
+window.__afpReset=function(){if(!confirm('Reset all progress?'))return;for(const i of inv)i.status='pending';ss();stats();document.getElementById('__afpbr').disabled=inv.length===0;log('Progress reset.','warn');};
+const saved=ls();if(saved&&saved.length){inv=saved;const pend=inv.filter(i=>i.status==='pending').length,done=inv.filter(i=>i.status==='done').length;document.getElementById('__afpcs').textContent=inv.length+' restored ('+pend+' pending)';document.getElementById('__afpbr').disabled=pend===0;log('Restored '+inv.length+' invoices: '+done+' done, '+pend+' pending.','info');stats();}else{log('Ready. Load a CSV with Txn ID and Reference columns.','info');}
+})();`;
+
+			document.getElementById("bm").href = "javascript:" + encodeURIComponent(src);
+		</script>
+	</body>
+</html>
