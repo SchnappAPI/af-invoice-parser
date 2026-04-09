@@ -270,6 +270,7 @@ const S = {
   tdSrc:    { padding: "7px 12px", borderBottom: "0.5px solid var(--color-border-tertiary)", position: "sticky", left: 0, background: "var(--color-background-primary)", zIndex: 1 },
   srcBadge: { fontSize: 10, background: "var(--color-background-secondary)", border: "0.5px solid var(--color-border-tertiary)", padding: "2px 8px", borderRadius: 99, color: "var(--color-text-secondary)", whiteSpace: "nowrap" },
   tblNote:  { fontSize: 11, color: "var(--color-text-secondary)", marginTop: 8 },
+  apikeyBar: { display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", background: "var(--color-background-secondary)", borderRadius: "var(--border-radius-md)", marginBottom: "1rem", fontSize: 12 },
   storageBar: { display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", background: "var(--color-background-secondary)", borderRadius: "var(--border-radius-md)", marginBottom: "1rem", fontSize: 12, color: "var(--color-text-secondary)" },
   dot: (ok) => ({ width: 7, height: 7, borderRadius: "50%", background: ok ? "#3B6D11" : "#9a9a96", flexShrink: 0 }),
 };
@@ -367,7 +368,7 @@ function App() {
 
       const resp = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true", "x-api-key": (localStorage.getItem("wip_apikey") || "") },
         body: JSON.stringify({
           model: "claude-sonnet-4-20250514",
           max_tokens: 1000,
@@ -496,6 +497,18 @@ function App() {
             : storageOk ? `Persistent storage active — ${results.length} invoice${results.length !== 1 ? "s" : ""} saved`
             : "Storage unavailable — results will not persist between sessions"}
         </span>
+      </div>
+
+      {/* API key bar */}
+      <div style={S.apikeyBar}>
+        <span style={{ color: "var(--color-text-secondary)", flexShrink: 0 }}>API Key</span>
+        <input
+          type="password"
+          defaultValue={localStorage.getItem("wip_apikey") || ""}
+          placeholder="sk-ant-..."
+          style={{ flex: 1, border: "0.5px solid var(--color-border-secondary)", borderRadius: "var(--border-radius-md)", padding: "5px 10px", fontSize: 12, fontFamily: "var(--font-sans)" }}
+          onChange={e => localStorage.setItem("wip_apikey", e.target.value.trim())}
+        />
       </div>
 
       {/* CSV upload bar */}
