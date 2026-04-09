@@ -172,7 +172,7 @@ function applyComputed(row, csvRow) {
     } catch { out[cf.key] = null; }
   });
   // Pay match — if Description starts with "W", compare Paid to Water Total; otherwise compare to Amount Due
-  const paid = parseFloat(csvRow?.Paid);
+  const paid = parseFloat((csvRow?.Paid || "").toString().replace(/,/g, ""));
   const description = (csvRow?.Description || "").trim();
   const isWater = description.toUpperCase().startsWith("W");
   const compareVal = isWater ? parseFloat(out.water_total) : parseFloat(out.amount_due);
