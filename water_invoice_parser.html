@@ -170,14 +170,17 @@ function applyComputed(row, csvRow) {
       else { out[cf.key] = (isNaN(val) || !isFinite(val)) ? null : parseFloat(val.toFixed(4)); }
     } catch { out[cf.key] = null; }
   });
-  // Pay match
-  const amtDue = parseFloat(out.amount_due);
-  const paid   = parseFloat(csvRow?.Paid);
-  if (!isNaN(amtDue) && !isNaN(paid)) {
-    out.pay_match = Math.abs(amtDue - paid) < 0.02 ? "MATCH" : "MISMATCH";
+  // Pay match — if Description starts with "W", compare Paid to Water Total; otherwise compare to Amount Due
+  const paid = parseFloat(csvRow?.Paid);
+  const description = (csvRow?.Description || "").trim();
+  const isWater = description.toUpperCase().startsWith("W");
+  const compareVal = isWater ? parseFloat(out.water_total) : parseFloat(out.amount_due);
+  if (!isNaN(compareVal) && !isNaN(paid)) {
+    out.pay_match = Math.abs(compareVal - paid) < 0.02 ? "MATCH" : "MISMATCH";
   } else {
     out.pay_match = null;
   }
+  out._pay_match_basis = isWater ? "Water Total" : "Amount Due";
   return out;
 }
 
@@ -611,6 +614,7 @@ function App() {
                       return (
                         <td key={f.key}
                           style={tdStyle}
+                          title={isMatch && row._pay_match_basis ? `Comparing Paid vs ${row._pay_match_basis}` : undefined}
                           contentEditable={!isMatch}
                           suppressContentEditableWarning
                           onBlur={isMatch ? undefined : e => {
@@ -625,7 +629,9 @@ function App() {
                             });
                           }}
                         >
-                          {fmtCell(row[f.key], f.type)}
+                          {isMatch && row[f.key]
+                            ? `${row[f.key]}${row._pay_match_basis ? " (vs " + row._pay_match_basis + ")" : ""}`
+                            : fmtCell(row[f.key], f.type)}
                         </td>
                       );
                     })}
